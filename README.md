@@ -1,2 +1,2 @@
-# moto-tracker
-the Swiss knife of applications for motorcycle rides
+# moto-tracker-expo
+the Swiss knife of applications for motorcycle rides. Frontend Expo app repository.
