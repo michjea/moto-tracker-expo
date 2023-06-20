@@ -1,2 +1,9 @@
-# moto-tracker
-the Swiss knife of applications for motorcycle rides
+# Moto tracker app
+
+## Installation
+
+## Start
+
+```bash
+expo-cli start --tunnel
+```
