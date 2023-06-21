@@ -1,11 +1,11 @@
-import { View, Text } from 'react-native';
+import { View, Text, ScrollView, SafeAreaView } from 'react-native';
+import { useState } from 'react';
+import { Redirect, Stack, useRouter } from 'expo-router';
 
-const Home = () => {
+const Index = () => {
     return (
-        <View>
-        <Text>Home</Text>
-        </View>
+        <Redirect href="/home" />
     );
 };
 
-export default Home;
+export default Index;

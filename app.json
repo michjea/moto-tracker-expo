@@ -5,6 +5,12 @@
       "bundler": "metro"
     },
     "name": "moto-tracker",
-    "slug": "moto-tracker"
+    "slug": "moto-tracker",
+    "extra": {
+      "eas": {
+        "projectId": "00f76b22-e5c8-44d1-b54d-9f9ab8e08d56"
+      }
+    },
+    "owner": "michjea"
   }
 }
