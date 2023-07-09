@@ -1,11 +1,20 @@
 import React , {useState, useEffect} from 'react';
 import { View, Text, Button, TextInput, FlatList, SectionList, TouchableOpacity } from 'react-native';
-import MapView, { Marker, UrlTile, Polyline, LatLng } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import { set } from 'react-native-reanimated';
+import {Platform, StyleSheet} from 'react-native';
+//import { MapContainer, TileLayer, useMap, Marker as LeafletMarker, Popup, Polyline as LeafletPolyline } from 'react-leaflet'; // not showing properly on web, needs css load
+import MapView, { Marker, UrlTile, Polyline, LatLng } from 'react-native-maps';
+//import { LatLng as LeafletLatLng, LeafletView } from 'react-native-leaflet-view'; // needs web view -> not compatible with web
+import { MapView as WebMapView } from '@teovilla/react-native-web-maps';
+
+/*const DEFAULT_COORDINATE = {
+    lat: 37.78825,
+    lng: -122.4324,
+  };  */
 
 const Item = ({item, onPress}) => (
     <TouchableOpacity onPress={onPress} style={{backgroundColor:'white'}}>
@@ -14,14 +23,20 @@ const Item = ({item, onPress}) => (
   );
 
 const Map = () => {
-
     // Router
     const router = useRouter();
+
+    const [position, setPosition] = useState([51.505, -0.09]);
 
     // Location
     const [location, setLocation] = useState(null);
     const [errorMsg, setErrorMsg] = useState(null);
-    const [region, setRegion] = useState(null);
+    const [region, setRegion] = useState({
+        latitude: 50.5,
+        longitude: 30.5,
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+    });
 
     // Search
     const [showSearchView, setShowSearchView] = useState(false);
@@ -67,10 +82,13 @@ const Map = () => {
             
             if (!await askPermissions()) return;
 
-            await Location.startLocationUpdatesAsync('location', {
-                accuracy: Location.Accuracy.BestForNavigation,
-                distanceInterval: 1,
-            });
+            // if not web, start location updates
+            if (Platform.OS !== 'web') {
+                await Location.startLocationUpdatesAsync('location', {
+                    accuracy: Location.Accuracy.BestForNavigation,
+                    distanceInterval: 1,
+                });
+            }
 
             await Location.watchPositionAsync(
                 {
@@ -171,6 +189,33 @@ const Map = () => {
 
     return (
         <View style={{ flex: 1 }}>
+            {/* Render LeafletView if os is web */}
+            {/*Platform.OS === 'web' &&  // not showing properly on web, needs css load
+                <MapContainer center={position} zoom={13} scrollWheelZoom={false}>
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+              </MapContainer>
+            */}
+
+            {/* Render WebMapView if os is web */}
+            {Platform.OS === 'web' &&
+                <WebMapView
+                    center={position}
+                    zoom={13}
+                    scrollWheelZoom={false}
+                >
+
+                </WebMapView>
+            }
+
+
+            
+
+            {/* Render MapView if os is not web */}
+            {Platform.OS !== 'web' &&
+
             <MapView
                 style={{ flex: 1 }}
                 region={region}
@@ -188,7 +233,7 @@ const Map = () => {
                 {to && <Marker coordinate={{ latitude: parseFloat(to.lat), longitude: parseFloat(to.lon) }} description={to.display_name} />}
 
                 {route && route.coordinates && <Polyline coordinates={route.coordinates} strokeColor="#000" strokeWidth={6} />}
-            </MapView>
+            </MapView>}
 
             <View style={{ position: 'absolute', top: 70, right: 20 }}>
                 <Button title="Center" onPress={handleCenterPress} />

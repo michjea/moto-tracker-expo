@@ -8,7 +8,7 @@
         }
       ]
     ],
-    "scheme": "acme",
+    "scheme": "moto-tracker",
     "web": {
       "bundler": "metro"
     },
