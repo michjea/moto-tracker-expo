@@ -1,4 +1,4 @@
-const chalk = require('chalk')
+/*const chalk = require('chalk')
 const { readFile, writeFile, copyFile } = require('fs').promises
 
 function log(...args) {
@@ -17,4 +17,4 @@ module.exports.reactNativeMapsWeb = async function() {
   log('✅ script ran successfully')
 }
 
-module.exports.reactNativeMapsWeb();
+module.exports.reactNativeMapsWeb();*/

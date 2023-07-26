@@ -1,5 +1,7 @@
 import React , {useState, useEffect} from 'react';
-import { View, Text, Button, TextInput, FlatList, SectionList, TouchableOpacity } from 'react-native';
+//import { View, Text, Button, TextInput, FlatList, SectionList, TouchableOpacity } from 'react-native';
+import { View,FlatList, SectionList, TouchableOpacity } from 'react-native';
+import { Text, Button, TextInput, Searchbar } from 'react-native-paper';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import axios from 'axios';
@@ -7,9 +9,19 @@ import { useRouter } from 'expo-router';
 import { set } from 'react-native-reanimated';
 import {Platform, StyleSheet} from 'react-native';
 //import { MapContainer, TileLayer, useMap, Marker as LeafletMarker, Popup, Polyline as LeafletPolyline } from 'react-leaflet'; // not showing properly on web, needs css load
-import MapView, { Marker, UrlTile, Polyline, LatLng } from 'react-native-maps';
+//import /*MapView,*/ {Marker, UrlTile, Polyline, Circle } from 'react-native-maps';
 //import { LatLng as LeafletLatLng, LeafletView } from 'react-native-leaflet-view'; // needs web view -> not compatible with web
-import { MapView as WebMapView } from '@teovilla/react-native-web-maps';
+//import MapView from '@teovilla/react-native-web-maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Gyroscope } from 'expo-sensors';
+import { Accelerometer } from 'expo-sensors';
+import { Avatar } from 'react-native-paper';
+
+// try to use mymap.web.js and mymap.js
+//import MapView from '@teovilla/react-native-web-maps';
+
+import MapView, {Marker, UrlTile, Polyline, Circle } from '../../components/mymap';
+import { useLocationContext } from '../../components/LocationContext';
 
 /*const DEFAULT_COORDINATE = {
     lat: 37.78825,
@@ -23,13 +35,20 @@ const Item = ({item, onPress}) => (
   );
 
 const Map = () => {
+
+    //const GOOGLE_MAPS_APIKEY = 'AIzaSyDxQ8xL95GLxwFFpCNZd157j9Tw0e4he4Y';
+
+    const [GOOGLE_MAPS_APIKEY, setGOOGLE_MAPS_APIKEY] = useState('');
+
     // Router
     const router = useRouter();
 
-    const [position, setPosition] = useState([51.505, -0.09]);
+    const [position, setPosition] = useState(null);
+
+    const { location, from, to, setSelectedField, setSelectedLocation } = useLocationContext();
 
     // Location
-    const [location, setLocation] = useState(null);
+    //const [location, setLocation] = useState(null);
     const [errorMsg, setErrorMsg] = useState(null);
     const [region, setRegion] = useState({
         latitude: 50.5,
@@ -41,20 +60,35 @@ const Map = () => {
     // Search
     const [showSearchView, setShowSearchView] = useState(false);
     const [searchText, setSearchText] = useState('');
-    const [selectedLocation, setSelectedLocation] = useState(null);
+    //const [selectedLocation, setSelectedLocation] = useState(null);
     const [searchResults, setSearchResults] = useState([]);
 
     // Route view
     const [showRouteView, setShowRouteView] = useState(false);
     const [isFromSelection, setIsFromSelection] = useState(false); // true = from, false = to
-    const [from, setFrom] = useState(null);
-    const [to, setTo] = useState(null);
+    //const [from, setFrom] = useState(null);
+    //const [to, setTo] = useState(null);
 
     // Circuit view
     const [showCircuitView, setShowCircuitView] = useState(false);
+    const [distance, setDistance] = useState(0);
 
     // Route
     const [route, setRoute] = useState({});
+    const [totalDistance, setTotalDistance] = useState(0);
+    const [routePolyline, setRoutePolyline] = useState([]);
+    const [pathDone, setPathDone] = useState(false);
+    // { positions : [{ lat, lon, speed, inclinations }, ...], distance, time }
+
+    const [startNavigation, setStartNavigation] = useState(false);
+    const [startTime, setStartTime] = useState(0);
+
+    const [coordinatesDelta, setCoordinatesDelta] = useState({
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+    })
+
+    const map = React.useRef(null);
 
     const askPermissions = async () => {
         const permissionF = await Location.getForegroundPermissionsAsync();
@@ -78,6 +112,19 @@ const Map = () => {
 
     useEffect(() => {
         (async () => {
+
+            try {
+                const response = await axios.get('https://moto-trackr.jeanne-michel.pro/api/google-maps-api-key');
+                console.log("google maps api key : ", response.data);
+                
+                setGOOGLE_MAPS_APIKEY(response.data);
+            } catch (err) {
+                console.error("error while getting google maps api key : ", err);
+            }
+
+            //subscribeGyroscope();
+            //subscribeAccelerometer();
+
             // Check permissions and ask if not granted
             
             if (!await askPermissions()) return;
@@ -97,10 +144,19 @@ const Map = () => {
                 },
                 (location) => {
 
-                    console.log("location callback : ", location);
-                    setLocation(location);
+                    //console.log("location callback : ", location);
+                    //setLocation(location);
 
                     console.log(location.coords.latitude, location.coords.longitude);
+
+                    if (startNavigation) {
+                        setRegion({
+                            latitude: location.coords.latitude,
+                            longitude: location.coords.longitude,
+                            latitudeDelta: coordinatesDelta.latitudeDelta,
+                            longitudeDelta: coordinatesDelta.longitudeDelta,
+                        });
+                    }
 
                     /*setRegion({
                         latitude: location.coords.latitude,
@@ -112,7 +168,60 @@ const Map = () => {
             );
 
         })();
+
+        subscribeGyroscope();
+        Gyroscope.setUpdateInterval(500);
+
+        subscribeAccelerometer();
+        Accelerometer.setUpdateInterval(500);
+
+        return () => {
+            unsubscribeGyroscope();
+            unsubscribeAccelerometer();
+        }
+
     }, []);
+
+    // GYROSCOPE \\
+    const [{x,y,z}, setGyroscopeData] = useState({x:0,y:0,z:0});
+    const [gyroscopeSubscription, setGyroscopeSubscription] = useState(null);
+
+    const subscribeGyroscope = () => {
+        setGyroscopeSubscription(
+            Gyroscope.addListener(gyroscopeData => {
+                setGyroscopeData(gyroscopeData);
+                console.log("gyroscope data : ", gyroscopeData);
+                
+                // Log in editor console the gyroscope data
+        
+            })
+        );
+    };
+
+    const unsubscribeGyroscope = () => {
+        gyroscopeSubscription && gyroscopeSubscription.remove();
+        setGyroscopeSubscription(null);
+    };
+
+
+    // ACCELEROMETER \\
+    const [{xa,ya,za}, setAccelerometerData] = useState({xa:0,ya:0,za:0});
+    const [accelerometerSubscription, setAccelerometerSubscription] = useState(null);
+
+    const subscribeAccelerometer = () => {
+        setAccelerometerSubscription(
+            Accelerometer.addListener(accelerometerData => {
+                setAccelerometerData(accelerometerData);
+                console.log("accelerometer data : ", accelerometerData);
+            })
+        );
+    };
+    
+    const unsubscribeAccelerometer = () => {
+        accelerometerSubscription && accelerometerSubscription.remove();
+        setAccelerometerSubscription(null);
+    };
+
 
     const handleCenterPress = async () => {
         if (!await askPermissions()) return;
@@ -122,9 +231,17 @@ const Map = () => {
         setRegion({
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
-            latitudeDelta: 0.0922,
-            longitudeDelta: 0.0421,
+            latitudeDelta: coordinatesDelta.latitudeDelta,
+            longitudeDelta: coordinatesDelta.longitudeDelta,
         });
+
+        // Navigate to current position
+        map.current.animateToRegion({
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: coordinatesDelta.latitudeDelta,
+            longitudeDelta: coordinatesDelta.longitudeDelta,
+        }, 1000);
     };
 
     const handleNewRoutePress = () => {
@@ -135,10 +252,10 @@ const Map = () => {
         setShowCircuitView(true);
     };
 
-    const handleSearchChange = async () => {
+    const handleSearchChange = async (text) => {
         // call nominatim api to get location
         console.log("searching : ", searchText);
-        const results = await axios.get(`https://nominatim.openstreetmap.org/search?q=${searchText}&format=json&addressdetails=1&limit=5`);
+        const results = await axios.get(`https://nominatim.openstreetmap.org/search?q=${text}&format=json&addressdetails=1&limit=5`);
         console.log(results.data);
         setSearchResults(results.data);
         // add local position to results
@@ -164,25 +281,24 @@ const Map = () => {
         setShowSearchView(false);
     }
 
-    const setPolygone = (polygone) => {
-        console.log("setting polygone : ", polygone);
-        // transform polygone to latlng array
-        /*const coordinates = polygone.map((point) => {
-            return { latitude: point[0], longitude: point[1] };
-        });*/
+    const setPolygone = (data) => {
+        // data is an array of objects. Each object has an attribute "path" which is an array of points. I want each point to be an object with latitude and longitude attributes
+        const coordinates = [];
+        // iterate over each data object
+        for (let i = 0; i < data.length; i++) {
+            // iterate over each point of the path
+            for (let j = 0; j < data[i].path.length; j++) {
+                // create the object
+                coordinates.push({ latitude: data[i].path[j]["latitude"], longitude: data[i].path[j]["longitude"] });
+            }
+        }
 
-        const coordinates = polygone.map((point) => {
+        /*const coordinates = polygone.map((point) => {
             return { latitude: point["latitude"], longitude: point["longitude"] };
         });
-
-        /*console.log("my polygone : ", polygone);
-        // add each point to the array
-        polygone.coordinates.map((point) => {
-            coordinates.push({ latitude: point[1], longitude: point[0] });
-        });*/
-
-        console.log("my coords : ", coordinates);
-        setRoute({ coordinates: coordinates });
+        console.log("my coords : ", coordinates);*/
+        //setRoute({ coordinates: coordinates });
+        setRoutePolyline({ coordinates: coordinates });
     };
 
 
@@ -200,120 +316,356 @@ const Map = () => {
             */}
 
             {/* Render WebMapView if os is web */}
-            {Platform.OS === 'web' &&
-                <WebMapView
-                    center={position}
-                    zoom={13}
-                    scrollWheelZoom={false}
-                >
-
-                </WebMapView>
+            {/*Platform.OS === 'web' &&
+                <MapView
+                style={{ flex: 1 }}
+                //region={region}
+                onRegionChangeComplete={setRegion}
+                provider="google"
+                googleMapsApiKey={GOOGLE_MAPS_APIKEY}
+            ></MapView>*/
             }
 
-
-            
-
             {/* Render MapView if os is not web */}
-            {Platform.OS !== 'web' &&
+            {Platform.OS !== 'web' || Platform.OS === 'web' &&
 
             <MapView
+                ref={map}
                 style={{ flex: 1 }}
                 region={region}
-                onRegionChangeComplete={setRegion}
+                onRegionChangeComplete= {(region) => {
+                    setRegion(region);
+                    console.log("region : ", region);
+                }}
+                provider="google"
+                googleMapsApiKey={GOOGLE_MAPS_APIKEY}
             >
-                <UrlTile
-                    urlTemplate="http://c.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    maximumZ={19}
-                    flipY={false}
-                />
-
-                {location && <Marker coordinate={{ latitude: location.coords.latitude, longitude: location.coords.longitude }} title='You are here' description='Your current position' />}
+                {/*<UrlTile urlTemplate="http://c.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} flipY={false} />*/}
+                
+                {location && 
+                    <Circle center={{ latitude: location.coords.latitude, longitude: location.coords.longitude }} radius={location.coords.accuracy} fillColor="rgba(0, 0, 255, 0.1)" strokeColor="rgba(0, 0, 255, 0.1)" />
+                }
+                
+                {/* Light blue marker */}
+                {location && <Marker coordinate={{ latitude: location.coords.latitude, longitude: location.coords.longitude }} description="Your current position" pinColor={'#1560BD'} />}
+                
                 {/*selectedLocation && <Marker coordinate={{ latitude: selectedLocation.lat, longitude: selectedLocation.lon }} description={selectedLocation.display_name} />*/}
                 {from && <Marker coordinate={{ latitude: parseFloat(from.lat), longitude: parseFloat(from.lon) }} description={from.display_name} />}
                 {to && <Marker coordinate={{ latitude: parseFloat(to.lat), longitude: parseFloat(to.lon) }} description={to.display_name} />}
 
-                {route && route.coordinates && <Polyline coordinates={route.coordinates} strokeColor="#000" strokeWidth={6} />}
+                {routePolyline && routePolyline.coordinates && <Polyline coordinates={routePolyline.coordinates} strokeColor="#000" strokeWidth={6} />}
             </MapView>}
 
+            {/* Center to current location */}
             <View style={{ position: 'absolute', top: 70, right: 20 }}>
-                <Button title="Center" onPress={handleCenterPress} />
+                <Button mode="contained" onPress={handleCenterPress}>Center</Button>
             </View>
 
-            {(!showRouteView && !showCircuitView) && <View style={{ position: 'absolute',bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 20 }}>  
-                <Button title="New route" onPress={handleNewRoutePress} />
-                <Button title="New circuit" onPress={handleNewCircuitPress} />
+            {/* New route or new circuit */}
+            {(!showRouteView && !showCircuitView && !startNavigation) && <View style={{ position: 'absolute',bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 10 }}>  
+                <Button mode="contained" onPress={handleNewRoutePress}>New route</Button>
+
+                <View style={{ marginTop: 10 }}></View>
+
+                <Button mode="contained" onPress={handleNewCircuitPress}>New circuit</Button>
             </View>}
 
+            {/* Select start and stop of route */}
             {showRouteView && (
-                <View>
-                    <Text onPress={() => {
-                        setShowSearchView(true);
-                        setIsFromSelection(true);
-                    }
-                    }>
-                        From : {from ? from.display_name : 'not selected'}
-                    </Text>
+                <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 10 }}>
+                    {/* Back button icon to go back to previous view, align left */}
+                    <Button mode="text" icon="arrow-left" onPress={() => setShowRouteView(false)} style={{ position: 'absolute', left: 0, top: 10 }} />
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20 }}>
+                        <Text>
+                            From
+                        </Text>
+                        <TextInput placeholder="From" value={from ? from.display_name : ''} 
+                            mode="outlined" style={{ flex: 1, marginLeft: 10 }}
+
+                            onFocus={() => {
+                                setSelectedField('from');
+                                router.push({ pathname:'/search-loc'});
+                            }}
+                            />
+                    </View>
+                    
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Text onPress={() => setShowSearchView(true)}>
-                        To : {to ? to.display_name : 'not selected'}
+                        To
                     </Text>
-                    <Button title="Calculate route" onPress={() => {
+                    <TextInput placeholder="From" value={to ? to.display_name : ''} 
+                            mode="outlined" style={{ flex: 1, marginLeft: 27 }}
+                            
+                            onFocus={() => {
+                                // Open search view
+                                setSelectedField('to');
+                                router.push({ pathname:'/search-loc'});
+                            }}
+                            />
+                    </View>
+
+                    <View style={{ marginTop: 10 }}></View>
+
+                    <Button mode="contained" onPress={() => {
                         console.log("calculating route");
-                        /*axios.get(`https://router.project-osrm.org/route/v1/driving/${from.lon},${from.lat};${to.lon},${to.lat}?overview=full&geometries=geojson`)
-                            .then((res) => {
-                                console.log(res.data);
-                                console.log(res.data.routes[0].geometry);
-                                //setRoute(res.data.routes[0].geometry);
-                                console.log("setting polygone");
-                                setPolygone(res.data.routes[0].geometry);
-                                console.log("polygone set");
-                            })
-                            .catch((err) => {
-                                console.error(err);
-                            });*/
-                            axios.get(`https://moto-tracker-route-api.shuttleapp.rs/calculate-route/?from_lat=${from.lat}&from_lon=${from.lon}&to_lat=${to.lat}&to_lon=${to.lon}`).then((res) => {
-                                //console.log(res.data.path);
-                                setPolygone(res.data.path);
+                            axios.get(`https://moto-trackr-route-api.shuttleapp.rs/calculate-route/?from_lat=${from.lat}&from_lon=${from.lon}&to_lat=${to.lat}&to_lon=${to.lon}`).then((res) => {
+                                console.log("itinerary : ", res.data);
+                                setPolygone(res.data);
+                                setRoute(res.data);
+
+                                // for each item in array, increment total distance
+                                setTotalDistance(0);
+                                for (let i = 0; i < res.data.length; i++) {
+                                    setTotalDistance(totalDistance + res.data[i].total_distance);
+                                }
+
                             }).catch((err) => {
                                 console.error(err);
                             });
-                    }} />
-                </View>
-            )}
+                    }}>Calculate route</Button>
 
-            {showCircuitView && (
-                <View>
-                    <Text onPress={() => {
-                        setShowSearchView(true);
-                        setIsFromSelection(true);
+                    {routePolyline && routePolyline.coordinates && 
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', marginTop: 10 }}>
+                        
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Avatar.Icon size={40} icon="map-marker-distance" color='grey' style={{ backgroundColor: 'white' }} />
+                            <Text>{Math.floor(totalDistance / 1000)} km</Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Avatar.Icon size={40} icon="clock-outline" color='grey' style={{ backgroundColor: 'white' }} />
+                            <Text>{((totalDistance / 1000 * 1.23) / 60).toFixed(2)} h</Text>
+                        </View>
+
+                        <Button mode="outlined" onPress={() => {
+                        // TODO
+                        // - Doit avoir ma position comme départ
+	                    // - Icône flèche (début juste un point bleu)
+	                    // - Sens de la route
+	                    // - Tourner la map dans le sens de la route
+	                    // - Bouton arrêter
+	                    // - Sauvegarde du temps
+	                    // - Mauvais itinéraire ?
+
+                        setStartNavigation(true);
+                        setShowRouteView(false);
+                        setStartTime(new Date());
+
+                        handleCenterPress();
+
+                        // set coordinates delta to have more zoom
+                        setCoordinatesDelta({
+                            latitudeDelta: 0.005,
+                            longitudeDelta: 0.005,
+                        });
+                    }}>Start navigation</Button>
+                    </View>
                     }
-                    }>
-                        From : {from ? from.display_name : 'not selected'}
-                    </Text>
-                    <Button title="Calculate circuit" onPress={() => {
-                        console.log("calculating circuit");
-                        axios.get(`https://router.project-osrm.org/trip/v1/driving/${from.lon},${from.lat}?roundtrip=true&source=first&destination=last&geometries=geojson`)
-                            .then((res) => {
-                                console.log(res.data);
-                                setCircuit(res.data);
-                            })
-                            .catch((err) => {
-                                console.error(err);
-                            });
-                    }} />
                 </View>
             )}
 
+            {/* Select start of circuit */}
+            {showCircuitView && (
+                <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 10 }}>
+                    <Button mode="text" icon="arrow-left" onPress={() => setShowCircuitView(false)} style={{ position: 'absolute', left: 0, top: 10 }} />
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 20 }}>
+                        <Text>
+                            From
+                        </Text>
+                        <TextInput placeholder="From" value={from ? from.display_name : ''} 
+                            mode="outlined" style={{ flex: 1, marginLeft: 10 }}
+
+                            onFocus={() => {
+                                setSelectedField('from');
+                                router.push({ pathname:'/search-loc'});
+                            }}
+                            />
+                    </View>
+
+                    <View style={{ marginTop: 10 }}></View>
+
+                    {/* Distance selection */}
+                    <TextInput mode="outlined" numeric placeholder="Distance" onChangeText={setDistance} value={distance} />
+                    
+                    <View style={{ marginTop: 10 }}></View>
+
+                    <Button mode="contained" onPress={() => {
+                        console.log("calculating circuit");
+                        axios.get(`https://moto-trackr-route-api.shuttleapp.rs/calculate-loop/?from_lat=${from.lat}&from_lon=${from.lon}&distance=${distance}`).then((res) => {
+                            setPolygone(res.data);
+                            setRoute(res.data);
+                        }).catch((err) => {
+                            console.error(err);
+                        });
+                    }} >Calculate circuit</Button>
+
+
+                    {route && route.coordinates && <Button title="Start navigation" onPress={() => {
+                        setStartNavigation(true);
+                        setShowRouteView(false);
+                        setShowCircuitView(false);
+                        setShowSearchView(false);
+                        setStartTime(new Date());
+
+                        handleCenterPress();
+
+                        // set coordinates delta to have more zoom
+                        setCoordinatesDelta({
+                            latitudeDelta: 0.005,
+                            longitudeDelta: 0.005,
+                        });
+                    }} />}
+                </View>
+            )}
+
+            {/* Search view */}
             {showSearchView && (
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'white', padding: 20 }}>
-                    <TextInput
-                        style={{height: 40, borderColor: 'gray', borderWidth: 1}}
-                        onChangeText={text => setSearchText(text)}
+                    <Searchbar
+                        onChangeText={text => {
+                            setSearchText(text);
+                            console.log("search text : ", text);
+                            handleSearchChange(text);
+                        }}
                         value={searchText}
-                        onEndEditing={handleSearchChange}
+                        //onEndEditing={handleSearchChange}
                         />
                     {searchResults.length > 0 && <SectionList style={{backgroundColor:'white'}} sections={[{ title: 'Results', data: searchResults }]} renderItem={({ item }) => <Item item={item} onPress={() => selectLocation(item)}/>} keyExtractor={item => item.place_id} />}
                 </View>
             )}
+
+            {/* Start navigation */}
+            {startNavigation && (
+                <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 20 }}>
+                    <Button mode="contained" onPress={async () => {
+                        setStartNavigation(false);
+                        setRoute(null);
+
+                        let endTime = new Date();
+                        let duration = endTime - startTime;
+
+                        // put duration in minutes
+                        duration = duration / 1000 / 60;
+
+                        console.log("end time : ", endTime);
+                        console.log("duration : ", duration);
+
+                        // - sauvegarder la balade
+	                    // - sur le stockage local et à l'api si connecté    
+                        // - API -> POST /api/rides with data : { start_time, end_time, path, distance, duration, user_id }                    
+                        // - sauvegarder les données de vitesse, distance, angle d'inclinaison, etc. toutes les secondes
+
+                        // pathDone is the routePolyline
+                        // For each point, we need to save the speed, the distance, the angle, etc.
+                        // Send random data for now
+                        let pathDone = routePolyline.coordinates;
+                        let pathDoneData = [];
+                        for (let i = 0; i < pathDone.length; i++) {
+                            pathDoneData.push({
+                                speed: Math.floor(Math.random() * 100),
+                                angle: Math.floor(Math.random() * 100),
+                                latitude: pathDone[i].latitude,
+                                longitude: pathDone[i].longitude,
+                            });
+                        }
+
+                        let ride = route;
+                        let distance = Math.floor(Math.random() * 100);
+
+                        // Get max speed and average speed
+                        let maxSpeed = 0;
+                        let averageSpeed = 0;
+
+                        for (let i = 0; i < pathDoneData.length; i++) {
+                            if (pathDoneData[i].speed > maxSpeed) {
+                                maxSpeed = pathDoneData[i].speed;
+                            }
+                            averageSpeed += pathDoneData[i].speed;
+                        }
+
+                        averageSpeed = averageSpeed / pathDoneData.length;
+
+                        let title = "Ride " + new Date().toLocaleDateString();
+                        let description = "Ride from " + from.display_name + " to " + to.display_name;
+
+                        /* Model in API is :
+                        {protected $fillable = [
+                            'user_id',
+                            'title',
+                            'description',
+                            'public',
+                            'created_at',
+                            'updated_at',
+                            'distance',
+                            'duration',
+                            'max_speed',
+                            'avg_speed',
+                            'positions',
+                        ];
+
+                        // Casts
+                        protected $casts = [
+                            'positions' => 'array',
+                        ];
+                        */
+
+                        let user_id = 1;
+
+                        let rideData = {
+                            title: title,
+                            description: description,
+                            public: true,
+                            //created_at: new Date(),
+                            //updated_at: new Date(),
+                            distance: distance,
+                            duration: duration,
+                            max_speed: maxSpeed,
+                            avg_speed: averageSpeed,
+                            positions: pathDoneData,
+                        };
+
+                        // Save ride in API
+                        try {
+                            let res = await axios.post('https://moto-trackr.jeanne-michel.pro/api/ride', rideData, {
+                                headers: {
+                                    Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
+                                }
+                            });
+                            console.log("ride saved in API : ", res.data);
+                        } catch (err) {
+                            console.error("error while saving ride in API : ", err);
+                        }
+
+                        /*if (rides) {
+                            const ridesArray = JSON.parse(rides);
+                            ridesArray.push({
+                                start_time: startTime,
+                                end_time: endTime,
+                                path: routePolyline.coordinates,
+                                //distance: route.distance,
+                                duration: duration,
+                                user_id: 1,
+                            });
+                            console.log("rides : ", ridesArray);
+                            await AsyncStorage.setItem('rides', JSON.stringify(ridesArray));
+                            console.log("rides saved");
+                        } else {
+                            await AsyncStorage.setItem('rides', JSON.stringify([{
+                                start_time: startTime,
+                                end_time: endTime,
+                                path: routePolyline.coordinates,
+                                //distance: route.distance,
+                                duration: duration,
+                                user_id: 1,
+                            }]));
+                            console.log("rides saved");
+                        }*/
+                    }} >Stop navigation</Button>
+                </View>
+            )}
+
         </View>
     );
 };
