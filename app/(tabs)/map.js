@@ -16,12 +16,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Gyroscope } from 'expo-sensors';
 import { Accelerometer } from 'expo-sensors';
 import { Avatar } from 'react-native-paper';
+import { DeviceMotion } from 'expo-sensors';
+import axiosInstance from '../../components/axiosConfig';
+//import test from '../../components/rotation';
 
 // try to use mymap.web.js and mymap.js
-//import MapView from '@teovilla/react-native-web-maps';
-
+//import MapView from 'react-native-maps';
 import MapView, {Marker, UrlTile, Polyline, Circle } from '../../components/mymap';
 import { useLocationContext } from '../../components/LocationContext';
+import { setNavStarted, setRouteInstructions, setRegion, setMap } from '../../state/locationSlice';
+import { useSelector, useDispatch } from "react-redux";
 
 /*const DEFAULT_COORDINATE = {
     lat: 37.78825,
@@ -34,61 +38,76 @@ const Item = ({item, onPress}) => (
     </TouchableOpacity>
   );
 
+//let foregroundSubscription = null;
+let x = 0;
+
 const Map = () => {
-
-    //const GOOGLE_MAPS_APIKEY = 'AIzaSyDxQ8xL95GLxwFFpCNZd157j9Tw0e4he4Y';
-
-    const [GOOGLE_MAPS_APIKEY, setGOOGLE_MAPS_APIKEY] = useState('');
-
-    // Router
+    const dispatch = useDispatch();
+    //const [GOOGLE_MAPS_APIKEY, setGOOGLE_MAPS_APIKEY] = useState('AIzaSyDxQ8xL95GLxwFFpCNZd157j9Tw0e4he4Y');
+    const [foregroundSubscription, setForegroundSubscription] = useState(null);
+    const GOOGLE_MAPS_APIKEY = 'AIzaSyDxQ8xL95GLxwFFpCNZd157j9Tw0e4he4Y';
+    //const url = 'https://moto-trackr.jeanne-michel.pro/api/'
+    //const url = 'http://localhost:8000/api/'
     const router = useRouter();
-
-    const [position, setPosition] = useState(null);
-
-    const { location, from, to, setSelectedField, setSelectedLocation } = useLocationContext();
-
-    // Location
-    //const [location, setLocation] = useState(null);
+    //const [position, setPosition] = useState(null);
+    const { location, from, to, setSelectedField, setSelectedLocation, location_ } = useLocationContext();
+    //const [location_, setLocation_] = useState(location);
     const [errorMsg, setErrorMsg] = useState(null);
-    const [region, setRegion] = useState({
-        latitude: 50.5,
-        longitude: 30.5,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-    });
+    /*const [region, setRegion] = useState({
+        latitude: 46.8182,
+        longitude: 8.2275,
+        latitudeDelta: 0.1922,
+        longitudeDelta: 0.1421,
+    });*/
+    const region = useSelector((state) => state.location.region);
 
     // Search
     const [showSearchView, setShowSearchView] = useState(false);
     const [searchText, setSearchText] = useState('');
-    //const [selectedLocation, setSelectedLocation] = useState(null);
     const [searchResults, setSearchResults] = useState([]);
 
     // Route view
     const [showRouteView, setShowRouteView] = useState(false);
     const [isFromSelection, setIsFromSelection] = useState(false); // true = from, false = to
-    //const [from, setFrom] = useState(null);
-    //const [to, setTo] = useState(null);
 
     // Circuit view
     const [showCircuitView, setShowCircuitView] = useState(false);
     const [distance, setDistance] = useState(0);
+    const [orientation, setOrientation] = useState(0);
 
     // Route
     const [route, setRoute] = useState({});
+    //const [currentInstruction, setCurrentInstruction] = useState("Start navigation");
+    const currentInstruction = useSelector((state) => state.location.currentInstruction);
+    const [instructionIndex, setInstructionIndex] = useState(0);
+    //const [routeInstructions, setRouteInstructions] = useState([]);
+    const routeInstructions = useSelector((state) => state.location.routeInstructions);
     const [totalDistance, setTotalDistance] = useState(0);
     const [routePolyline, setRoutePolyline] = useState([]);
-    const [pathDone, setPathDone] = useState(false);
+    //const [pathDone, setPathDone] = useState([]);
+    const pathDone = useSelector((state) => state.location.pathDone);
     // { positions : [{ lat, lon, speed, inclinations }, ...], distance, time }
 
-    const [startNavigation, setStartNavigation] = useState(false);
+    //const [startNavigation, setStartNavigation] = useState(false);
+    const startNavigation = useSelector((state) => state.location.isNavStarted);
     const [startTime, setStartTime] = useState(0);
 
     const [coordinatesDelta, setCoordinatesDelta] = useState({
         latitudeDelta: 0.0922,
         longitudeDelta: 0.0421,
     })
+    const [zoomCoordinatesDelta, setZoomCoordinatesDelta] = useState({
+        latitudeDelta: 0.0922,
+        longitudeDelta: 0.0421,
+    })
+    const [zoomCoordinatesDeltaNavigation, setZoomCoordinatesDeltaNavigation] = useState({
+        latitudeDelta: 0.0022,
+        longitudeDelta: 0.0011,
+    })
 
     const map = React.useRef(null);
+
+    //const map = useSelector((state) => state.location.map);
 
     const askPermissions = async () => {
         const permissionF = await Location.getForegroundPermissionsAsync();
@@ -110,138 +129,171 @@ const Map = () => {
         return true;
     };
 
-    useEffect(() => {
-        (async () => {
+    const startForegroundLocation = async (isNav) => {
+        if (!await askPermissions()) return;
 
-            try {
-                const response = await axios.get('https://moto-trackr.jeanne-michel.pro/api/google-maps-api-key');
-                console.log("google maps api key : ", response.data);
+
+        if (foregroundSubscription){
+            foregroundSubscription?.remove();
+            setForegroundSubscription(null);
+        }
+
+        let pathDone_ = [];
+
+        x = x+1;
+        let y = x;
+
+        const newForegroundSubscription = await Location.watchPositionAsync(
+            {
+                accuracy: Location.Accuracy.BestForNavigation,
+                distanceInterval: 10,
+            },
+            (location) => {
+                console.log("foreground location " + y);//, location);
+
+                setLocation_(location);
                 
-                setGOOGLE_MAPS_APIKEY(response.data);
-            } catch (err) {
-                console.error("error while getting google maps api key : ", err);
-            }
+                if (isNav) {
+                    console.log("location vs new location : ", location_, location);
 
-            //subscribeGyroscope();
-            //subscribeAccelerometer();
-
-            // Check permissions and ask if not granted
-            
-            if (!await askPermissions()) return;
-
-            // if not web, start location updates
-            if (Platform.OS !== 'web') {
-                await Location.startLocationUpdatesAsync('location', {
-                    accuracy: Location.Accuracy.BestForNavigation,
-                    distanceInterval: 1,
-                });
-            }
-
-            await Location.watchPositionAsync(
-                {
-                    accuracy: Location.Accuracy.BestForNavigation,
-                    distanceInterval: 1,
-                },
-                (location) => {
-
-                    //console.log("location callback : ", location);
-                    //setLocation(location);
-
-                    console.log(location.coords.latitude, location.coords.longitude);
-
-                    if (startNavigation) {
-                        setRegion({
-                            latitude: location.coords.latitude,
-                            longitude: location.coords.longitude,
-                            latitudeDelta: coordinatesDelta.latitudeDelta,
-                            longitudeDelta: coordinatesDelta.longitudeDelta,
-                        });
-                    }
+                    /*map.current.animateToRegion({
+                        latitude: location.coords.latitude,
+                        longitude: location.coords.longitude,
+                        latitudeDelta: zoomCoordinatesDeltaNavigation.latitudeDelta,
+                        longitudeDelta: zoomCoordinatesDeltaNavigation.longitudeDelta,
+                    }, 100);*/
 
                     /*setRegion({
                         latitude: location.coords.latitude,
                         longitude: location.coords.longitude,
-                        latitudeDelta: 0.0922,
-                        longitudeDelta: 0.0421,
+                        latitudeDelta: zoomCoordinatesDeltaNavigation.latitudeDelta,
+                        longitudeDelta: zoomCoordinatesDeltaNavigation.longitudeDelta,
                     });*/
                 }
-            );
 
+                let tilt_angle = {
+                    alpha: 0,
+                    beta: 0,
+                    gamma: 0,
+                    total_rotation: 0,
+                }
+
+                // print type of speed
+                //console.log("type of speed : ", typeof location.coords.speed);
+                console.log("callback start navigation : ", isNav);
+                if (isNav){
+                    console.log("adding position to pathDone");
+
+                    pathDone_.push({
+                        latitude: location.coords.latitude,
+                        longitude: location.coords.longitude,
+                        speed: location.coords.speed * 3.6,
+                        altitude: location.coords.altitude,
+                    });
+
+                    // Calculer la distance entre la position actuelle et le point de l'instruction
+                    // Si la distance est inférieure à 10 mètres, on passe à l'instruction suivante
+                    // Si on est à la dernière instruction, on arrête la navigation
+
+                    // Calculer la distance entre la position actuelle et le point de l'instruction
+                    let distance = Math.sqrt(Math.pow(location.coords.latitude - routeInstructions[instructionIndex][2], 2) + Math.pow(location.coords.longitude - routeInstructions[instructionIndex][3], 2));
+                    let distance_m = distance / 111320;
+                    console.log("distance : ", distance_m);
+
+                    // Si la distance est inférieure à 10 mètres, on passe à l'instruction suivante
+                    if (instructionIndex === 0){
+                        // give instruction with meters
+                        //setCurrentInstruction(routeInstructions[instructionIndex][0] + " in " + Math.floor(distance_m) + " meters");
+                        console.log("instruction " + routeInstructions[instructionIndex][0] + " in " + Math.floor(distance_m) + " meters");
+                    }
+
+                    if (distance_m < 10) {
+                        console.log("distance inférieure à 10 mètres");
+                        //setCurrentInstruction(routeInstructions[instructionIndex][0]);
+                        setInstructionIndex(instructionIndex + 1);
+                        console.log("instruction " + routeInstructions[instructionIndex][0]);
+                    } else {
+                        console.log("distance supérieure à 10 mètres");
+                        // give instruction with meters
+                        //setCurrentInstruction(routeInstructions[instructionIndex][0] + " in " + Math.floor(distance_m) + " meters");
+                        console.log("instruction " + routeInstructions[instructionIndex][0] + " in " + Math.floor(distance_m) + " meters");
+                    }
+
+                    //setPathDone(pathDone_);
+
+                }
+            });
+
+        setForegroundSubscription(newForegroundSubscription);
+    };
+
+
+
+    const stopForegroundLocation = async () => {
+        foregroundSubscription?.remove();
+        setForegroundSubscription(null);
+        //foregroundSubscription = null;
+    };
+        
+    useEffect(() => {
+        (async () => {
+            try {
+                const response = await axiosInstance.get('google-maps-api-key');
+                //console.log("google maps api key : ", response.data);
+                
+                //setGOOGLE_MAPS_APIKEY(response.data);
+            } catch (err) {
+                console.error("error while getting google maps api key : ", err);
+            }
+
+            if (!await askPermissions()) return;
+
+            //startForegroundLocation(false);
         })();
 
-        subscribeGyroscope();
-        Gyroscope.setUpdateInterval(500);
-
-        subscribeAccelerometer();
-        Accelerometer.setUpdateInterval(500);
+        //subscribeDeviceMotion();
+        //DeviceMotion.setUpdateInterval(1000);
 
         return () => {
-            unsubscribeGyroscope();
-            unsubscribeAccelerometer();
+            //unsubscribeDeviceMotion();
+            stopForegroundLocation();
         }
 
     }, []);
 
-    // GYROSCOPE \\
-    const [{x,y,z}, setGyroscopeData] = useState({x:0,y:0,z:0});
-    const [gyroscopeSubscription, setGyroscopeSubscription] = useState(null);
 
-    const subscribeGyroscope = () => {
-        setGyroscopeSubscription(
-            Gyroscope.addListener(gyroscopeData => {
-                setGyroscopeData(gyroscopeData);
-                console.log("gyroscope data : ", gyroscopeData);
-                
-                // Log in editor console the gyroscope data
-        
-            })
-        );
+    const [deviceMotion, setDeviceMotion] = useState({});
+    const subscribeDeviceMotion = () => {
+        DeviceMotion.addListener(deviceMotionData => {
+            setDeviceMotion(deviceMotionData);
+        });
     };
-
-    const unsubscribeGyroscope = () => {
-        gyroscopeSubscription && gyroscopeSubscription.remove();
-        setGyroscopeSubscription(null);
+    const unsubscribeDeviceMotion = () => {
+        DeviceMotion.removeAllListeners();
     };
-
-
-    // ACCELEROMETER \\
-    const [{xa,ya,za}, setAccelerometerData] = useState({xa:0,ya:0,za:0});
-    const [accelerometerSubscription, setAccelerometerSubscription] = useState(null);
-
-    const subscribeAccelerometer = () => {
-        setAccelerometerSubscription(
-            Accelerometer.addListener(accelerometerData => {
-                setAccelerometerData(accelerometerData);
-                console.log("accelerometer data : ", accelerometerData);
-            })
-        );
-    };
-    
-    const unsubscribeAccelerometer = () => {
-        accelerometerSubscription && accelerometerSubscription.remove();
-        setAccelerometerSubscription(null);
-    };
-
 
     const handleCenterPress = async () => {
         if (!await askPermissions()) return;
 
         console.log("centering map");
 
-        setRegion({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            latitudeDelta: coordinatesDelta.latitudeDelta,
-            longitudeDelta: coordinatesDelta.longitudeDelta,
-        });
+        // navigate to current position if location is available
+        if (location_ === null || location_ === undefined) {
+            console.log("location is null or undefined");
+            return;
+        }
+
+        //console.log("location : ", location_.coords.latitude, location_.coords.longitude);
+        //console.log("zoom coordinates delta : ", zoomCoordinatesDelta.latitudeDelta, zoomCoordinatesDelta.longitudeDelta);
+        //console.log("map : ", map.current);
 
         // Navigate to current position
         map.current.animateToRegion({
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            latitudeDelta: coordinatesDelta.latitudeDelta,
-            longitudeDelta: coordinatesDelta.longitudeDelta,
-        }, 1000);
+            latitude: location_.coords.latitude,
+            longitude: location_.coords.longitude,
+            latitudeDelta: zoomCoordinatesDelta.latitudeDelta,
+            longitudeDelta: zoomCoordinatesDelta.longitudeDelta,
+        }, 500);
     };
 
     const handleNewRoutePress = () => {
@@ -284,12 +336,17 @@ const Map = () => {
     const setPolygone = (data) => {
         // data is an array of objects. Each object has an attribute "path" which is an array of points. I want each point to be an object with latitude and longitude attributes
         const coordinates = [];
+        const instructions = [];
         // iterate over each data object
         for (let i = 0; i < data.length; i++) {
             // iterate over each point of the path
             for (let j = 0; j < data[i].path.length; j++) {
                 // create the object
                 coordinates.push({ latitude: data[i].path[j]["latitude"], longitude: data[i].path[j]["longitude"] });
+            }
+            for (let k = 0; k < data[i].instructions.length; k++) {
+                // create the object
+                instructions.push(data[i].instructions[k]);
             }
         }
 
@@ -299,55 +356,210 @@ const Map = () => {
         console.log("my coords : ", coordinates);*/
         //setRoute({ coordinates: coordinates });
         setRoutePolyline({ coordinates: coordinates });
+        
+        //setRouteInstructions(instructions);
+        dispatch(setRouteInstructions(instructions));
     };
 
 
+    const fetchRoute = async () => {
+        console.log("calculating route");
+                            axios.get(`https://moto-trackr-route-api.shuttleapp.rs/calculate-route/?from_lat=${from.lat}&from_lon=${from.lon}&to_lat=${to.lat}&to_lon=${to.lon}`).then((res) => {
+                                console.log("itinerary : ", res.data);
+                                setPolygone(res.data);
+                                setRoute(res.data);
 
-    return (
-        <View style={{ flex: 1 }}>
-            {/* Render LeafletView if os is web */}
-            {/*Platform.OS === 'web' &&  // not showing properly on web, needs css load
-                <MapContainer center={position} zoom={13} scrollWheelZoom={false}>
-                <TileLayer
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                />
-              </MapContainer>
-            */}
+                                // for each item in array, increment total distance
+                                
+                                let tot_dist = 0;
+                                for (let i = 0; i < res.data.length; i++) {
+                                    tot_dist += res.data[i].total_distance;
+                                }
+                                setTotalDistance(tot_dist);
 
-            {/* Render WebMapView if os is web */}
-            {/*Platform.OS === 'web' &&
-                <MapView
-                style={{ flex: 1 }}
-                //region={region}
-                onRegionChangeComplete={setRegion}
-                provider="google"
-                googleMapsApiKey={GOOGLE_MAPS_APIKEY}
-            ></MapView>*/
+                            }).catch((err) => {
+                                console.error(err);
+                             });
+    };
+
+    const fetchCircuit = async () => {
+        console.log("calculating circuit");
+                        axios.get(`https://moto-trackr-route-api.shuttleapp.rs/calculate-loop/?from_lat=${from.lat}&from_lon=${from.lon}&distance=${distance}&orientation=${orientation}`).then((res) => {
+                            setPolygone(res.data);
+                            setRoute(res.data);
+                        }).catch((err) => {
+                            console.error(err);
+                        });
+    };
+
+    const handleNavigation = async () => {
+        // TODO
+                        // - Doit avoir ma position comme départ
+	                    // - Icône flèche (début juste un point bleu)
+	                    // - Sens de la route
+	                    // - Tourner la map dans le sens de la route
+	                    // - Bouton arrêter
+	                    // - Sauvegarde du temps
+	                    // - Mauvais itinéraire ?
+
+                        //setStartNavigation(true);
+                        dispatch(setNavStarted(true));
+                        //await stopForegroundLocation();
+                        //startForegroundLocation(true);
+                        console.log("handle navigation start navigation : ", startNavigation);
+                        setShowRouteView(false);
+                        setShowCircuitView(false);
+                        setStartTime(new Date());
+
+                        handleCenterPress();
+
+                        // set coordinates delta to have more zoom
+                        setCoordinatesDelta({
+                            latitudeDelta: 0.005,
+                            longitudeDelta: 0.005,
+                        });
+                    };
+    
+    const handleStopNavigation = async () => {
+            //setStartNavigation(false);
+            dispatch(setNavStarted(false));
+            //await stopForegroundLocation();
+            //startForegroundLocation(false);
+
+            let endTime = new Date();
+            let duration = endTime - startTime;
+
+            // put duration in minutes
+            duration = duration / 1000 / 60;
+
+            console.log("end time : ", endTime);
+            console.log("duration : ", duration);
+
+            // pathDone is the routePolyline
+            // For each point, we need to save the speed, the distance, the angle, etc.
+            // Send random data for now
+            //let pathDone = routePolyline.coordinates;
+            /*let pathDoneData = [];
+            for (let i = 0; i < pathDone.length; i++) {
+                pathDoneData.push({
+                    speed: Math.floor(Math.random() * 100),
+                    //angle: Math.floor(Math.random() * 100),
+                    altitude: Math.floor(Math.random() * 100),
+                    latitude: pathDone[i].latitude,
+                    longitude: pathDone[i].longitude,
+                });
+            }*/
+            let pathDoneData = pathDone;
+
+            //let distance = Math.floor(Math.random() * 100);
+
+            // Get max speed and average speed
+            let maxSpeed = 0;
+            let averageSpeed = 0;
+
+            for (let i = 0; i < pathDoneData.length; i++) {
+
+                // print type of speed
+                console.log("type of speed : ", typeof pathDoneData[i].speed, pathDoneData[i].speed);
+
+                if (pathDoneData[i].speed > maxSpeed) {
+                    maxSpeed = pathDoneData[i].speed;
+                }
+                averageSpeed += pathDoneData[i].speed;
             }
 
-            {/* Render MapView if os is not web */}
-            {Platform.OS !== 'web' || Platform.OS === 'web' &&
+            console.log("average speed before division : ", averageSpeed);
+            console.log("path done data length : ", pathDoneData.length);
+            averageSpeed = averageSpeed / pathDoneData.length;
+            console.log("average speed after division : ", averageSpeed);
 
-            <MapView
+            console.log("max speed : ", maxSpeed);
+            console.log("average speed : ", averageSpeed);
+            console.log("path done : ", pathDoneData);
+            console.log("route : ", route);
+            console.log("distance : ", totalDistance);
+            console.log("duration : ", duration);
+
+            let rideData = {
+                title: "Ride " + new Date().toLocaleDateString(),
+                description: "Ride from " + from.display_name + " to " + to.display_name,
+                public: true,
+                //created_at: new Date(),
+                //updated_at: new Date(),
+                distance: totalDistance,
+                duration: duration,
+                max_speed: maxSpeed,
+                avg_speed: averageSpeed,
+                positions: pathDoneData,
+                route: route
+            };
+
+            console.log("ride data : ", rideData);
+
+            // Save ride in API
+            try {
+                let res = await axiosInstance.post('ride', rideData, {
+                    headers: {
+                        Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
+                    }
+                });
+                console.log("ride saved in API : ", res.data);
+            } catch (err) {
+                console.error("error while saving ride in API : ", err);
+                // if 422, print error message
+                if (err.response.status === 422) {
+                    console.error("422 : ", err.response.data.errors);
+                }
+            }
+
+            /*if (rides) {
+                const ridesArray = JSON.parse(rides);
+                ridesArray.push({
+                    start_time: startTime,
+                    end_time: endTime,
+                    path: routePolyline.coordinates,
+                    //distance: route.distance,
+                    duration: duration,
+                    user_id: 1,
+                });
+                console.log("rides : ", ridesArray);
+                await AsyncStorage.setItem('rides', JSON.stringify(ridesArray));
+                console.log("rides saved");
+            } else {
+                await AsyncStorage.setItem('rides', JSON.stringify([{
+                    start_time: startTime,
+                    end_time: endTime,
+                    path: routePolyline.coordinates,
+                    //distance: route.distance,
+                    duration: duration,
+                    user_id: 1,
+                }]));
+                console.log("rides saved");
+            }*/
+            setRoute(null);
+        }
+
+
+    return (
+    
+        <View style={{ flex: 1 }}>
+            {/* Render MapView if os is not web */}
+            {<MapView
                 ref={map}
                 style={{ flex: 1 }}
                 region={region}
-                onRegionChangeComplete= {(region) => {
-                    setRegion(region);
-                    console.log("region : ", region);
-                }}
+                /*onRegionChangeComplete={(region, gesture) => {
+                    if (gesture) {
+                        dispatch(setRegion(region));
+                        console.log("region changed by user");
+                    }
+                }}*/
                 provider="google"
                 googleMapsApiKey={GOOGLE_MAPS_APIKEY}
+                followsUserLocation={startNavigation}
+                showsUserLocation={true}
             >
                 {/*<UrlTile urlTemplate="http://c.tile.openstreetmap.org/{z}/{x}/{y}.png" maximumZ={19} flipY={false} />*/}
-                
-                {location && 
-                    <Circle center={{ latitude: location.coords.latitude, longitude: location.coords.longitude }} radius={location.coords.accuracy} fillColor="rgba(0, 0, 255, 0.1)" strokeColor="rgba(0, 0, 255, 0.1)" />
-                }
-                
-                {/* Light blue marker */}
-                {location && <Marker coordinate={{ latitude: location.coords.latitude, longitude: location.coords.longitude }} description="Your current position" pinColor={'#1560BD'} />}
                 
                 {/*selectedLocation && <Marker coordinate={{ latitude: selectedLocation.lat, longitude: selectedLocation.lon }} description={selectedLocation.display_name} />*/}
                 {from && <Marker coordinate={{ latitude: parseFloat(from.lat), longitude: parseFloat(from.lon) }} description={from.display_name} />}
@@ -356,9 +568,16 @@ const Map = () => {
                 {routePolyline && routePolyline.coordinates && <Polyline coordinates={routePolyline.coordinates} strokeColor="#000" strokeWidth={6} />}
             </MapView>}
 
+            {/* Directions instructions */}
+            {startNavigation && (
+                <View style={{ position: 'absolute', top: 20, left: 0, right: 0, backgroundColor: 'white', padding: 10 }}>
+                    <Text>{currentInstruction}</Text>
+                </View>
+            )} 
+
             {/* Center to current location */}
             <View style={{ position: 'absolute', top: 70, right: 20 }}>
-                <Button mode="contained" onPress={handleCenterPress}>Center</Button>
+                <Button mode="contained" onPress={handleCenterPress} disabled={location_ === null}>Center</Button>
             </View>
 
             {/* New route or new circuit */}
@@ -398,7 +617,6 @@ const Map = () => {
                             mode="outlined" style={{ flex: 1, marginLeft: 27 }}
                             
                             onFocus={() => {
-                                // Open search view
                                 setSelectedField('to');
                                 router.push({ pathname:'/search-loc'});
                             }}
@@ -407,23 +625,7 @@ const Map = () => {
 
                     <View style={{ marginTop: 10 }}></View>
 
-                    <Button mode="contained" onPress={() => {
-                        console.log("calculating route");
-                            axios.get(`https://moto-trackr-route-api.shuttleapp.rs/calculate-route/?from_lat=${from.lat}&from_lon=${from.lon}&to_lat=${to.lat}&to_lon=${to.lon}`).then((res) => {
-                                console.log("itinerary : ", res.data);
-                                setPolygone(res.data);
-                                setRoute(res.data);
-
-                                // for each item in array, increment total distance
-                                setTotalDistance(0);
-                                for (let i = 0; i < res.data.length; i++) {
-                                    setTotalDistance(totalDistance + res.data[i].total_distance);
-                                }
-
-                            }).catch((err) => {
-                                console.error(err);
-                            });
-                    }}>Calculate route</Button>
+                    <Button mode="contained" onPress={fetchRoute}>Calculate route</Button>
 
                     {routePolyline && routePolyline.coordinates && 
                     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', marginTop: 10 }}>
@@ -438,28 +640,7 @@ const Map = () => {
                             <Text>{((totalDistance / 1000 * 1.23) / 60).toFixed(2)} h</Text>
                         </View>
 
-                        <Button mode="outlined" onPress={() => {
-                        // TODO
-                        // - Doit avoir ma position comme départ
-	                    // - Icône flèche (début juste un point bleu)
-	                    // - Sens de la route
-	                    // - Tourner la map dans le sens de la route
-	                    // - Bouton arrêter
-	                    // - Sauvegarde du temps
-	                    // - Mauvais itinéraire ?
-
-                        setStartNavigation(true);
-                        setShowRouteView(false);
-                        setStartTime(new Date());
-
-                        handleCenterPress();
-
-                        // set coordinates delta to have more zoom
-                        setCoordinatesDelta({
-                            latitudeDelta: 0.005,
-                            longitudeDelta: 0.005,
-                        });
-                    }}>Start navigation</Button>
+                        <Button mode="outlined" onPress={handleNavigation}>Start navigation</Button>
                     </View>
                     }
                 </View>
@@ -482,203 +663,49 @@ const Map = () => {
                                 router.push({ pathname:'/search-loc'});
                             }}
                             />
+                        <TextInput mode="outlined" maxLength={3} placeholder="Distance" onChangeText={(text) => {
+                            text = text.replace(/[^0-9]/g, '');
+                            setDistance(text.toString());
+                        }} value={distance} />
+                        <TextInput mode="outlined" maxLength={1} placeholder="Orientation" onChangeText={(text) => {
+                            text = text.replace(/[^0-9]/g, '');
+                            setOrientation(text.toString());
+                        }} value={orientation} />
                     </View>
 
                     <View style={{ marginTop: 10 }}></View>
-
-                    {/* Distance selection */}
-                    <TextInput mode="outlined" numeric placeholder="Distance" onChangeText={setDistance} value={distance} />
                     
-                    <View style={{ marginTop: 10 }}></View>
 
-                    <Button mode="contained" onPress={() => {
-                        console.log("calculating circuit");
-                        axios.get(`https://moto-trackr-route-api.shuttleapp.rs/calculate-loop/?from_lat=${from.lat}&from_lon=${from.lon}&distance=${distance}`).then((res) => {
-                            setPolygone(res.data);
-                            setRoute(res.data);
-                        }).catch((err) => {
-                            console.error(err);
-                        });
-                    }} >Calculate circuit</Button>
+                    <Button mode="contained" onPress={fetchCircuit} >Calculate circuit</Button>
 
+                    {routePolyline && routePolyline.coordinates && 
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', marginTop: 10 }}>
+                        
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Avatar.Icon size={40} icon="map-marker-distance" color='grey' style={{ backgroundColor: 'white' }} />
+                            <Text>{Math.floor(totalDistance / 1000)} km</Text>
+                        </View>
 
-                    {route && route.coordinates && <Button title="Start navigation" onPress={() => {
-                        setStartNavigation(true);
-                        setShowRouteView(false);
-                        setShowCircuitView(false);
-                        setShowSearchView(false);
-                        setStartTime(new Date());
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Avatar.Icon size={40} icon="clock-outline" color='grey' style={{ backgroundColor: 'white' }} />
+                            <Text>{((totalDistance / 1000 * 1.23) / 60).toFixed(2)} h</Text>
+                        </View>
 
-                        handleCenterPress();
-
-                        // set coordinates delta to have more zoom
-                        setCoordinatesDelta({
-                            latitudeDelta: 0.005,
-                            longitudeDelta: 0.005,
-                        });
-                    }} />}
-                </View>
-            )}
-
-            {/* Search view */}
-            {showSearchView && (
-                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: 'white', padding: 20 }}>
-                    <Searchbar
-                        onChangeText={text => {
-                            setSearchText(text);
-                            console.log("search text : ", text);
-                            handleSearchChange(text);
-                        }}
-                        value={searchText}
-                        //onEndEditing={handleSearchChange}
-                        />
-                    {searchResults.length > 0 && <SectionList style={{backgroundColor:'white'}} sections={[{ title: 'Results', data: searchResults }]} renderItem={({ item }) => <Item item={item} onPress={() => selectLocation(item)}/>} keyExtractor={item => item.place_id} />}
+                        <Button mode="outlined" onPress={handleNavigation}>Start navigation</Button>
+                    </View>
+                    }
                 </View>
             )}
 
             {/* Start navigation */}
             {startNavigation && (
                 <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'white', padding: 20 }}>
-                    <Button mode="contained" onPress={async () => {
-                        setStartNavigation(false);
-                        setRoute(null);
-
-                        let endTime = new Date();
-                        let duration = endTime - startTime;
-
-                        // put duration in minutes
-                        duration = duration / 1000 / 60;
-
-                        console.log("end time : ", endTime);
-                        console.log("duration : ", duration);
-
-                        // - sauvegarder la balade
-	                    // - sur le stockage local et à l'api si connecté    
-                        // - API -> POST /api/rides with data : { start_time, end_time, path, distance, duration, user_id }                    
-                        // - sauvegarder les données de vitesse, distance, angle d'inclinaison, etc. toutes les secondes
-
-                        // pathDone is the routePolyline
-                        // For each point, we need to save the speed, the distance, the angle, etc.
-                        // Send random data for now
-                        let pathDone = routePolyline.coordinates;
-                        let pathDoneData = [];
-                        for (let i = 0; i < pathDone.length; i++) {
-                            pathDoneData.push({
-                                speed: Math.floor(Math.random() * 100),
-                                angle: Math.floor(Math.random() * 100),
-                                latitude: pathDone[i].latitude,
-                                longitude: pathDone[i].longitude,
-                            });
-                        }
-
-                        let ride = route;
-                        let distance = Math.floor(Math.random() * 100);
-
-                        // Get max speed and average speed
-                        let maxSpeed = 0;
-                        let averageSpeed = 0;
-
-                        for (let i = 0; i < pathDoneData.length; i++) {
-                            if (pathDoneData[i].speed > maxSpeed) {
-                                maxSpeed = pathDoneData[i].speed;
-                            }
-                            averageSpeed += pathDoneData[i].speed;
-                        }
-
-                        averageSpeed = averageSpeed / pathDoneData.length;
-
-                        let title = "Ride " + new Date().toLocaleDateString();
-                        let description = "Ride from " + from.display_name + " to " + to.display_name;
-
-                        /* Model in API is :
-                        {protected $fillable = [
-                            'user_id',
-                            'title',
-                            'description',
-                            'public',
-                            'created_at',
-                            'updated_at',
-                            'distance',
-                            'duration',
-                            'max_speed',
-                            'avg_speed',
-                            'positions',
-                        ];
-
-                        // Casts
-                        protected $casts = [
-                            'positions' => 'array',
-                        ];
-                        */
-
-                        let user_id = 1;
-
-                        let rideData = {
-                            title: title,
-                            description: description,
-                            public: true,
-                            //created_at: new Date(),
-                            //updated_at: new Date(),
-                            distance: distance,
-                            duration: duration,
-                            max_speed: maxSpeed,
-                            avg_speed: averageSpeed,
-                            positions: pathDoneData,
-                        };
-
-                        // Save ride in API
-                        try {
-                            let res = await axios.post('https://moto-trackr.jeanne-michel.pro/api/ride', rideData, {
-                                headers: {
-                                    Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
-                                }
-                            });
-                            console.log("ride saved in API : ", res.data);
-                        } catch (err) {
-                            console.error("error while saving ride in API : ", err);
-                        }
-
-                        /*if (rides) {
-                            const ridesArray = JSON.parse(rides);
-                            ridesArray.push({
-                                start_time: startTime,
-                                end_time: endTime,
-                                path: routePolyline.coordinates,
-                                //distance: route.distance,
-                                duration: duration,
-                                user_id: 1,
-                            });
-                            console.log("rides : ", ridesArray);
-                            await AsyncStorage.setItem('rides', JSON.stringify(ridesArray));
-                            console.log("rides saved");
-                        } else {
-                            await AsyncStorage.setItem('rides', JSON.stringify([{
-                                start_time: startTime,
-                                end_time: endTime,
-                                path: routePolyline.coordinates,
-                                //distance: route.distance,
-                                duration: duration,
-                                user_id: 1,
-                            }]));
-                            console.log("rides saved");
-                        }*/
-                    }} >Stop navigation</Button>
+                    <Button mode="contained" onPress={handleStopNavigation} >Stop navigation</Button>
                 </View>
             )}
 
         </View>
     );
 };
-
-TaskManager.defineTask('location', ({ data, error }) => {
-    if (error) {
-        console.error(error);
-        return;
-    }
-
-    if (data) {
-        console.log("change data callback : ", data);
-    }
-});
 
 export default Map;

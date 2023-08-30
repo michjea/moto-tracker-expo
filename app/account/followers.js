@@ -1,25 +1,29 @@
 import axios from "axios";
 import React, { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Text, TextInput, Button, HelperText } from "react-native-paper";
+import { Text, TextInput, Button, HelperText, List } from "react-native-paper";
 import { View } from "react-native";
 import { useEffect } from "react";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axiosInstance from "../../components/axiosConfig";
 
 export default () => {
 
     const [followers, setFollowers] = useState([]);
 
+    //const url = 'https://moto-trackr.jeanne-michel.pro/api/'
+    //const url = 'http://localhost:8000/api/'
+
     // Get user followers
     const fetchFollowers = async () => {
         try {
-            const response = await axios.get("http://127.0.0.1:8000/api/user/followers", {
+            const response = await axiosInstance.get("user/followers", {
                 headers: {
                     Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
                 }
             });
         
-            setFollowers(response.data);
+            setFollowers(response.data.followers);
         }
         catch (err) {
             console.log(err);

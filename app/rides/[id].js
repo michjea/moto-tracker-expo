@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
+import { View, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { router } from "expo-router";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import MapView, { Polyline } from "react-native-maps";
 import { Stack } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import MapView, {Marker, UrlTile, Polyline, Circle } from '../../components/mymap';
+import axios from "axios";
+import { Text, Button, TextInput, Searchbar, RadioButton } from 'react-native-paper';
+import axiosInstance from "../../components/axiosConfig";
 
 const Ride = () => {
     const { id } = useLocalSearchParams();
@@ -16,28 +19,67 @@ const Ride = () => {
     // fetch ride from asyncStorage
     const [ride, setRide] = useState(null);
 
-    const [renderMode, setRenderMode] = useState("normal");
-
     const [maxSpeed, setMaxSpeed] = useState(100);
     const [maxInclination, setMaxInclination] = useState(30);
     const [totalTime, setTotalTime] = useState(1000);
     const [totalDistance, setTotalDistance] = useState(6000);
+    const [routePolyline, setRoutePolyline] = useState([]);
+
+    const map = React.useRef(null);
+    const GOOGLE_MAPS_APIKEY = 'AIzaSyDxQ8xL95GLxwFFpCNZd157j9Tw0e4he4Y';
+    
+    const [checked, setChecked] = React.useState('Normal');
+
+    const getColorForSpeed = (speed) => {
+        const normalizedSpeed = speed / maxSpeed;
+        const r = normalizedSpeed * 255;
+        const g = 255 - normalizedSpeed * 255;
+        const b = 0;
+        return `rgb(${r}, ${g}, ${b})`;
+    };
 
     useEffect(() => {
         console.log("useEffect");
         const getRide = async () => {
             try {
-                console.log("Fetching rides from asyncStorage");
-                const jsonValue = await AsyncStorage.getItem("rides");
-                if (jsonValue != null) {
-                    console.log("Rides found");
-                    const rides = JSON.parse(jsonValue);
-                    setRide(rides[id]);
-                } else {
-                    console.log("No rides found");
-                }
+                const response = await axiosInstance.get('ride/' + id, {
+                    headers: {
+                        Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
+                    }
+                });
+
+                setRide(response.data);
+                setTotalTime(response.data.duration);
+                setTotalDistance(response.data.distance);
+
+                console.log(response.data);        
+
+                const polylines = [];
+                // For all positions in ride, 
+                let firstPos = null;
+                response.data.positions.forEach(position => {
+                    // Add a polyline
+                    if(firstPos == null) {
+                        firstPos = position;
+                    } else {
+                        const obj = {};
+                        const path = [{
+                            latitude: position.latitude,
+                            longitude: position.longitude
+                        }, {
+                            latitude: firstPos.latitude,
+                            longitude: firstPos.longitude
+                        }];
+                        obj.path = path;
+                        obj.color = getColorForSpeed(position.speed);
+                        polylines.push(obj);
+                        firstPos = position;
+                    }
+                });
+
+                setRoutePolyline(polylines);
+
             } catch (e) {
-                console.log("Error while fetching rides from asyncStorage");
                 console.log(e);
             }
         };
@@ -57,64 +99,75 @@ const Ride = () => {
             </TouchableOpacity>*/}
 
             {ride &&  (
-                <MapView
-                style={{ width: "90%", height: 300, alignSelf: "center" }}
-                region={{
-                    latitude: ride.path[0].latitude,
-                    longitude: ride.path[0].longitude,
-                    latitudeDelta: 0.0922,
-                    longitudeDelta: 0.0421,
-                }}
-                >
+                <SafeAreaView style={{flex:1, width: '100%', height:'100%', margin:20}}>
+                    <SafeAreaView style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                        <RadioButton.Group onValueChange={newValue => setChecked(newValue)} value={checked}>
+                            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                                <Text>Normal</Text>
+                                <RadioButton value="Normal" />
+                            </View>
+                            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                                <Text>Speed</Text>
+                                <RadioButton value="Speed" />
+                            </View>
+                        </RadioButton.Group>
+                    </SafeAreaView>
 
-                {/* Blue poly line with ride.path if renderMode is "normal" */}
-                {renderMode == "normal" && (
-                    <Polyline
-                        coordinates={ride.path}
-                        strokeColor="#0000FF"
-                        strokeWidth={6}
-                    />
-                )}
+                    <View style={{ width: '90%', height:200 }}>
+                        <MapView
+                            ref={map}
+                            initialRegion={{
+                                latitude: ride.positions[0].latitude,   
+                                longitude: ride.positions[0].longitude,
+                            }}
+                            initialCamera={
+                                {
+                                    center: {
+                                        latitude: ride.positions[0].latitude,
+                                        longitude: ride.positions[0].longitude,
+                                    },
+                                    zoom: 10
 
-                {/* Red poly line with ride.path if renderMode is "speed" */}
-                {renderMode == "speed" && (
-                    <Polyline
-                        coordinates={ride.path}
-                        strokeColor="#FF0000"
-                        strokeWidth={6}
-                    />
-                )}
+                            }}
+                            provider="google"
+                            googleMapsApiKey={GOOGLE_MAPS_APIKEY}
+                        >
 
-                {/* Green poly line with ride.path if renderMode is "inclination" */}
-                {renderMode == "inclination" && (
-                    <Polyline
-                        coordinates={ride.path}
-                        strokeColor="#00FF00"
-                        strokeWidth={6}
-                    />
-                )}
-            </MapView>)}
+                        {/* Blue poly line with ride.path if renderMode is "normal" */}
+                        {checked == "Normal" && (
+                            <Polyline
+                                coordinates={ride.positions.map(position => ({
+                                    latitude: position.latitude,
+                                    longitude: position.longitude
+                                }
+                                ))}
+                                strokeColor="#0000FF"
+                                strokeWidth={6}
+                            />
+                        )}
 
-                <View>
-                    <TouchableOpacity onPress={() => setRenderMode("normal")}>
-                        <Text>Normal</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setRenderMode("speed")}>
-                        <Text>Speed</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setRenderMode("inclination")}>
-                        <Text>Inclination</Text>
-                    </TouchableOpacity>
-                </View>
+                        {/* Red poly line with ride.path if renderMode is "speed" */}
+                        {checked == "Speed" && (
+                            // Create mutlipke polylines with different colors
+                            routePolyline.map((polyline, index) => (
+                                <Polyline
+                                    key={index}
+                                    coordinates={polyline.path}
+                                    strokeColor={polyline.color}
+                                    strokeWidth={5}
+                                />
+                            ))
+                        )}
+                        </MapView>
+                    </View>
+                </SafeAreaView>)}
+            
 
                 <View>
                     <Text>Max speed : {maxSpeed} km/h</Text>
-                    <Text>Max inclination : {maxInclination} %</Text>
                     <Text>Total time : {totalTime / 60} minutes</Text>
                     <Text>Total distance : {totalDistance / 1000} kilometers</Text>
                 </View>
-                
-        
         </SafeAreaView>
     );
 }

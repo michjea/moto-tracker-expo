@@ -7,6 +7,7 @@ module.exports = function (api) {
       "react-native-reanimated/plugin",
       require.resolve("expo-router/babel"),
       'react-native-paper/babel',
+      'module:react-native-dotenv',
     ],
   };
 };

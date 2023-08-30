@@ -4,9 +4,11 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as React from 'react';
 import { TextInput, Button, Text, HelperText } from 'react-native-paper';
-import { Link, useRouter } from 'expo-router';
+import { Link, Stack, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import axiosInstance from '../../components/axiosConfig';
 
+//import { storeData, getData } from '../../components/store';
 
 const Login = () => {
     const [email, setEmail] = useState('');
@@ -16,8 +18,12 @@ const Login = () => {
 
     const router = useRouter();
 
+    //const url = 'https://moto-trackr.jeanne-michel.pro/api/'
+    //const url = 'http://localhost:8000/api/'
+
     return (
         <SafeAreaView style={{ padding: 50 }}>
+            <Stack.Screen options={{ headerShown: false }} />
             <Text variant='headlineMedium'>Login</Text>
 
             <HelperText type="error" visible={errors.general}>
@@ -65,34 +71,40 @@ const Login = () => {
                             password,
                             device_name
                         });*/
+                        //let url_login = url + ;
 
-                        let result = await axios.post('https://moto-trackr.jeanne-michel.pro/api/auth/login', {
+                        let result = await axiosInstance.post('auth/login', {
                             email,
                             password,
                             device_name
-                        }, {
-                            headers: {
-                                'Accept': 'application/json',
-                                'Content-Type': 'application/json'
-                            }
                         });
 
-                        console.log(result);
 
-                        // Store the user in the async storage
-                        await AsyncStorage.setItem('user', JSON.stringify(result.data.user));
+                        if (result && result.data) {
+                            console.log(result);
 
-                        // Store the token in the async storage
-                        await AsyncStorage.setItem('token', result.data.token);
+                            // Store the user in the async storage
+                            await AsyncStorage.setItem('user', JSON.stringify(result.data.user));
+                            //await storeData('user', JSON.stringify(result.data.user));
 
-                        // Redirect to the home page
-                        router.replace('/home');
+                            // Store the token in the async storage
+                            await AsyncStorage.setItem('token', result.data.token);
+                            //await storeData('token', result.data.token);
+
+                            // Redirect to the home page
+                            router.replace('/home');
+                        } else {
+                            console.log("error login");
+                            console.log(result);
+                        }
                     }
                     catch (e) {
                         if (e.response.status == 422) {
                             setErrors(e.response.data.errors);
                         } else if (e.response.status == 401) {
                             setErrors({ general: e.response.data.message });
+                        } else {
+                            console.log("error login" + e);
                         }
                     }
                 }}

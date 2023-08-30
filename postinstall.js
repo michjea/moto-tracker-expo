@@ -1,11 +1,13 @@
-/*const chalk = require('chalk')
+const chalk = require('chalk')
 const { readFile, writeFile, copyFile } = require('fs').promises
 
+console.log(chalk.green('here'))
+
 function log(...args) {
-    console.log(chalk.yellow('[react-native-maps]'), ...args)
+  console.log(chalk.yellow('[react-native-maps]'), ...args)
 }
 
-module.exports.reactNativeMapsWeb = async function() {
+reactNativeMaps = async function() {
   log('📦 Creating web compatibility of react-native-maps using an empty module loaded on web builds')
   const modulePath = 'node_modules/react-native-maps'
   await writeFile(`${modulePath}/lib/index.web.js`, 'module.exports = {}', 'utf-8')
@@ -17,4 +19,4 @@ module.exports.reactNativeMapsWeb = async function() {
   log('✅ script ran successfully')
 }
 
-module.exports.reactNativeMapsWeb();*/
+reactNativeMaps()

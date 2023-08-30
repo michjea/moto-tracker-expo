@@ -5,14 +5,18 @@ import { Text, TextInput, Button, HelperText, List } from "react-native-paper";
 import { View } from "react-native";
 import { useEffect } from "react";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axiosInstance from "../../components/axiosConfig";
 
 export default () => {
 
     const [following, setFollowing] = useState([]);
 
+    //const url = 'https://moto-trackr.jeanne-michel.pro/api/'
+    //const url = 'http://localhost:8000/api/'
+
     const fetchFollowing = async () => {
         try {
-            const response = await axios.get("http://127.0.0.1:8000/api/user/following", {
+            const response = await axiosInstance.get("user/following", {
                 headers: {
                     Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
                 }
@@ -43,7 +47,7 @@ export default () => {
                         right={props => <Button 
                             onPress={async () => {
                                 try {
-                                    const response = await axios.delete(`http://127.0.0.1:8000/api/user/${user.id}/unfollow`, {
+                                    const response = await axiosInstance.delete(`user/${user.id}/unfollow`, {
                                         headers: {
                                             Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
                                         }

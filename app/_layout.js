@@ -1,6 +1,9 @@
 import { Stack } from "expo-router";
 import { DefaultTheme, PaperProvider } from "react-native-paper";
 import { LocationProvider } from "../components/LocationContext";
+import { Provider } from "react-redux";
+import { PersistGate } from "redux-persist/integration/react";
+import store from "../state/store";
 
 const theme = {
     ...DefaultTheme,
@@ -17,13 +20,17 @@ const theme = {
 
 const Layout = () => {
     return (
-        <PaperProvider theme={theme}>
+        <Provider store={store}>
             <LocationProvider>
-        <Stack>
-            <Stack.Screen name="(tabs)" options={{headerShown:false}} />
-        </Stack>
-            </LocationProvider>
-        </PaperProvider>
+                <PaperProvider theme={theme}>
+                    
+                <Stack>
+                    <Stack.Screen name="(tabs)" options={{headerShown:false}} />
+                </Stack>
+                    
+                </PaperProvider>
+                </LocationProvider>
+        </Provider>
     );
 };
 

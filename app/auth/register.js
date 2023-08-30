@@ -6,7 +6,9 @@ import * as React from 'react';
 import { TextInput, Button, Text, HelperText } from 'react-native-paper';
 import { Link, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { Stack } from 'expo-router';
+//import { storeData, getData } from '../../components/store';
+import axiosInstance from '../../components/axiosConfig';
 
 const Login = () => {
     const [name, setName] = useState('');
@@ -18,8 +20,12 @@ const Login = () => {
 
     const router = useRouter();
 
+    //const url = 'https://moto-trackr.jeanne-michel.pro/api/'
+    //const url = 'http://localhost:8000/api/'
+
     return (
         <SafeAreaView style={{ padding: 50 }}>
+            <Stack.Screen options={{ headerShown: false }} />
             <Text variant='headlineMedium'>Register</Text>
 
             <HelperText type="error" visible={errors.general}>
@@ -95,36 +101,35 @@ const Login = () => {
                             password,
                             device_name
                         });*/
+                        //let url_register = url + 'auth/register';
 
-                        let result = await axios.post('https://moto-trackr.jeanne-michel.pro/api/auth/register', {
+                        let result = await axiosInstance.post('auth/register', {
                             name,
                             email,
                             password,
                             password_confirmation: passwordConfirmation,
                             device_name
-                        }, {
-                            headers: {
-                                'Accept': 'application/json',
-                                'Content-Type': 'application/json'
-                            }
                         });
 
+                        console.log('User registered successfully !');
                         console.log(result);
 
                         // Store the user in the async storage
                         await AsyncStorage.setItem('user', JSON.stringify(result.data.user));
+                        //await storeData('user', JSON.stringify(result.data.user));
 
                         // Store the token in the async storage
                         await AsyncStorage.setItem('token', result.data.token);
+                        //await storeData('token', result.data.token);
 
                         // Redirect to the home page
                         router.replace('/home');
                     }
                     catch (e) {
+                        console.log('Error while registering user...');
+                        console.log(e);
                         if (e.response.status == 422) {
-                            setErrors(e.response.data.errors);
-                        } else if (e.response.status == 401) {
-                            setErrors({ general: e.response.data.message });
+                            setErrors(e.response.data);
                         }
                     }
                 }}

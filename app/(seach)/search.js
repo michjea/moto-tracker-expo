@@ -6,6 +6,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import axiosInstance from '../../components/axiosConfig';
 
 export default () => {
 
@@ -17,13 +18,16 @@ export default () => {
     const [searchQuery, setSearchQuery] = useState(q);
     const [searchResults, setSearchResults] = useState([]);
 
+    //const url = 'https://moto-trackr.jeanne-michel.pro/api/';
+    //const url = 'http://localhost:8000/api/';
+
     const getSearchResults = async (query) => {
         console.log("Query: " + query);
         try {
             if (query == '') {
                 return;
             }
-            const response = await axios.get(`https://moto-trackr.jeanne-michel.pro/api/users/search?query=${query}`, {
+            const response = await axiosInstance.get(`users/search?query=${query}`, {
                 headers: {
                     // add token to header
                     Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
@@ -35,6 +39,7 @@ export default () => {
             console.log(searchResults);
         }
         catch (err) {
+            console.log("Error: " + err);
             console.log(err);
         }
     };
@@ -69,17 +74,17 @@ export default () => {
                             onPress={async () => {
                                 // follow/unfollow user
                                 let verb = user.following ? 'DELETE' : 'POST';
-                                let url = '';
+                                let url_ = '';
                                 console.log(user.user.id);
                                 if (user.following) {
-                                    url = `https://moto-trackr.jeanne-michel.pro/api/user/${user.user.id}/unfollow`;
+                                    url_ = `user/${user.user.id}/unfollow`;
                                 } else {
-                                    url = `https://moto-trackr.jeanne-michel.pro/api/user/${user.user.id}/follow`;
+                                    url_ = `user/${user.user.id}/follow`;
                                 }
                                 try {
-                                    const response = await axios({
+                                    const response = await axiosInstance({
                                         method: verb,
-                                        url: url,
+                                        url: url_,
                                         headers: {
                                             Authorization: `Bearer ${await AsyncStorage.getItem('token')}`
                                         }

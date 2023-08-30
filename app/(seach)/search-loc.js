@@ -16,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Gyroscope } from 'expo-sensors';
 import { Accelerometer } from 'expo-sensors';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSelector, useDispatch } from 'react-redux';
+import { fetchLocation, setLocation } from '../../state/locationSlice';
 
 // try to use mymap.web.js and mymap.js
 //import MapView from '@teovilla/react-native-web-maps';
@@ -27,7 +29,8 @@ import { useLocationContext } from '../../components/LocationContext';
 export default () => {
     const router = useRouter();
     
-    const { location, from, to, setSelectedField, setSelectedLocation } = useLocationContext();
+    const { from, to, setSelectedField, setSelectedLocation } = useLocationContext();
+    const location = useSelector((state) => state.location.location);
 
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -43,7 +46,10 @@ export default () => {
             console.log(results);
             //setSearchResults(results.data);
             //console.log(searchResults);
-            setSearchResults([...results.data, { display_name: 'Your current position', lat: location.coords.latitude, lon: location.coords.longitude }]);
+            if(location.coords.latitude != null && location.coords.longitude != null)
+                setSearchResults([...results.data, { display_name: 'Your current position', lat: location.coords.latitude, lon: location.coords.longitude }]);
+            else
+                setSearchResults(results.data);
         }
         catch (err) {
             console.log(err);
